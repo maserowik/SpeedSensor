@@ -119,8 +119,6 @@ const char PAGE_HTML[] PROGMEM = R"rawhtml(
   WiFi: <span>SpeedSensor</span>
   &nbsp;|&nbsp;
   Address: <span>4.3.2.1</span>
-  &nbsp;|&nbsp;
-  Data update: <span>every 1 second</span>
 </div>
 
 <div id="statusBar" class="status-bar waiting">
@@ -157,7 +155,7 @@ const char PAGE_HTML[] PROGMEM = R"rawhtml(
   </div>
 </div>
 
-<footer>SPEED SENSOR SYSTEM // KEYENCE LR-TB5000C x2 // ARDUINO MEGA 2560 // WEMOS D1 MINI</footer>
+<footer>Seegrid Internal Use Only // Not For External Users</footer>
 
 <script>
 function updateData() {
