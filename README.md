@@ -23,12 +23,13 @@
 10. [Required Libraries](#required-libraries)
 11. [Sensor Identification Test](#sensor-identification-test)
 12. [WiFi Access Point](#wifi-access-point)
-13. [Serial Monitor Output](#serial-monitor-output)
+13. [Phone Webpage](#phone-webpage)
+    - [Webpage Field Reference](#webpage-field-reference)
+14. [Serial Monitor Output](#serial-monitor-output)
     - [Startup Sequence](#startup-sequence)
     - [Measurement Output](#measurement-output)
     - [Warning Messages](#warning-messages)
-14. [LCD Display Layout](#lcd-display-layout)
-15. [Phone Webpage](#phone-webpage)
+15. [LCD Display Layout](#lcd-display-layout)
 16. [How It Works](#how-it-works)
 17. [Fault Tolerance](#fault-tolerance)
 18. [Troubleshooting](#troubleshooting)
@@ -46,7 +47,7 @@ The purpose of this system is to provide an automated way to:
 * Determine the direction of travel (Right to Left or Left to Right)
 * Log all results to the Serial Monitor with timestamp and measurement counter
 * Optionally display results on a 20x4 I2C LCD
-* Optionally broadcast results to a phone browser via WiFi using a Wemos D1 Mini
+* Broadcast results live to a phone browser via WiFi using a Wemos D1 Mini
 
 ---
 
@@ -58,7 +59,7 @@ This system applies to any application requiring non-contact speed measurement u
 
 ## Project Structure
 
-The project consists of three files across two separate Arduino IDE sketch folders:
+The project consists of four files across three separate Arduino IDE sketch folders:
 
 ```
 Documents/Arduino/
@@ -86,7 +87,7 @@ Documents/Arduino/
 * Arduino Mega 2560
 * 2x Keyence LR-TB5000C laser sensors
 * Dedicated 24VDC power supply for sensors
-* Wemos D1 Mini -- optional, for WiFi phone display
+* Wemos D1 Mini -- for WiFi phone display
 * 20x4 I2C LCD display -- optional
 * Connecting wires and M12 sensor cables
 
@@ -94,10 +95,11 @@ Documents/Arduino/
 * Arduino IDE installed on PC
 * USB cable connected to Arduino Mega
 * Serial Monitor set to **115200 baud**
-* ESP8266 board package installed in Arduino IDE (required for Wemos D1 Mini only)
+* ESP8266 board package installed in Arduino IDE (required for Wemos D1 Mini)
 
 ### Libraries
 * `LiquidCrystal I2C` by Frank de Brabander -- install via Arduino IDE Library Manager
+* `ArduinoJson` by Benoit Blanchon -- install via Arduino IDE Library Manager
 * `Wire` -- built into Arduino IDE, no install needed
 * `ESP8266WiFi` -- included automatically when ESP8266 board package is installed
 * `ESP8266WebServer` -- included automatically when ESP8266 board package is installed
@@ -129,7 +131,7 @@ The sensors run on a dedicated 24VDC power supply. Only the black signal wire co
 * The sensors use NPN open collector output
 * When idle the Arduino INPUT_PULLUP holds the signal pin at 5V -- the 24VDC supply never touches the Arduino pin
 * When triggered the sensor pulls the black wire LOW toward GND
-* Because all grounds are tied together (24VDC supply negative, Arduino GND) the Arduino pin sees a clean 0V when triggered
+* Because all grounds are tied together (24VDC supply negative, Arduino GND, Wemos GND) the Arduino pin sees a clean 0V when triggered
 
 > **Critical:** All grounds must be tied together -- 24VDC supply negative, Arduino GND, and Wemos GND must all share a common ground. Without this the signal will be unreliable or incorrect.
 
@@ -176,7 +178,7 @@ Left  Sensor Black wire ---- Arduino Pin 3
 
 > **Note:** On the Arduino Mega, I2C uses pins 20 (SDA) and 21 (SCL). This is different from the Arduino Uno which uses A4/A5.
 
-> **Note:** If the LCD does not appear at startup its I2C address may differ from 0x27. Run an I2C scanner sketch to find the correct address and update `LiquidCrystal_I2C lcd(0x27, 20, 4)` in the sketch.
+> **Note:** If the LCD does not appear at startup its I2C address may differ from 0x27. Run the I2C_Scanner sketch to find the correct address and update `LiquidCrystal_I2C lcd(0x27, 20, 4)` in the sketch.
 
 ### Wemos D1 Mini Wiring
 
@@ -185,8 +187,6 @@ Left  Sensor Black wire ---- Arduino Pin 3
 | RX | Pin 18 (TX1) |
 | GND | GND (common ground) |
 | 5V | 5V |
-
-> **Note:** The Wemos D1 Mini is entirely optional. If not connected the Mega continues to operate normally with no errors. See Fault Tolerance section for details.
 
 ### Pin Summary
 
@@ -281,6 +281,7 @@ Install via Arduino IDE -> Tools -> Manage Libraries:
 | Library | Author | Install Name | Required For |
 |---------|--------|-------------|-------------|
 | LiquidCrystal I2C | Frank de Brabander | `LiquidCrystal I2C` | LCD display |
+| ArduinoJson | Benoit Blanchon | `ArduinoJson` | Wemos JSON data endpoint |
 | Wire | Arduino | Built-in | LCD display |
 | ESP8266WiFi | ESP8266 Community | Included with ESP8266 board package | Wemos WiFi |
 | ESP8266WebServer | ESP8266 Community | Included with ESP8266 board package | Wemos webpage |
@@ -341,7 +342,7 @@ The Wemos D1 Mini creates its own WiFi hotspot. No router or existing network is
 | WiFi Network Name | SpeedSensor |
 | WiFi Password | speedsensor |
 | Browser Address | 4.3.2.1 |
-| Page Refresh Rate | Every 2 seconds |
+| Data Update Rate | Every 1 second (live, no page reload) |
 | Reading History | Last 20 readings |
 
 ### How to Connect
@@ -351,6 +352,32 @@ The Wemos D1 Mini creates its own WiFi hotspot. No router or existing network is
 3. Enter password `speedsensor`
 4. Open any browser
 5. Go to `4.3.2.1`
+
+---
+
+## Phone Webpage
+
+The Wemos D1 Mini serves a live dashboard at `4.3.2.1`. The page loads once and data updates every second without reloading or flickering. It uses two endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| / | Full HTML page -- loads once only |
+| /data | JSON data -- fetched every second by JavaScript |
+
+### Webpage Field Reference
+
+The following numbered fields appear on the webpage. Numbers correspond to the legend displayed at the bottom of the live page.
+
+| Field # | Field Name | Description |
+|---------|-----------|-------------|
+| 1 | Status Indicator | Green pulsing dot = system armed and receiving data from Arduino. Orange dot = waiting for Arduino connection. |
+| 2 | Meters per Second (m/s) | Raw speed value used for calculation. Most precise unit. |
+| 3 | Kilometers per Hour (km/h) | Speed converted from m/s. Calculated as m/s multiplied by 3.6. |
+| 4 | Miles per Hour (mph) | Speed converted from m/s. Calculated as m/s multiplied by 2.237. |
+| 5 | Direction of Travel | Which sensor triggered first. Right to Left means object passed right sensor then left sensor. Left to Right means the opposite. |
+| 6 | Reading Number | Sequential count since Arduino last powered on. Resets to zero on power cycle or reset. |
+| 7 | Timestamp | Minutes and seconds since Arduino powered on. Format MM:SS. |
+| 8 | Reading History | Last 20 measurements stored in order, newest at top. Oldest reading is dropped when 21st arrives. History is lost if Wemos is power cycled. |
 
 ---
 
@@ -416,6 +443,8 @@ After the startup sequence the Serial Monitor is silent until an object passes t
 
 ## LCD Display Layout
 
+> **Note:** LCD is currently on hold pending replacement of faulty unit. The Wemos webpage serves as the primary display. LCD code remains in Speed_Test.ino and will activate automatically when a working LCD is connected.
+
 ### Boot Screen
 ```
 +--------------------+
@@ -458,54 +487,31 @@ After the startup sequence the Serial Monitor is silent until an object passes t
 
 ---
 
-## Phone Webpage
-
-The Wemos D1 Mini serves a dark-themed dashboard page at `4.3.2.1`. The page auto-refreshes every 2 seconds.
-
-### Latest Reading Panel
-Displays the most recent measurement prominently:
-* Speed in m/s, km/h, and mph in three side-by-side cells
-* Direction badge
-* Measurement number and timestamp
-
-### Reading History Table
-Displays the last 20 readings in a scrollable table, most recent first:
-* Measurement number
-* Speed in m/s, km/h, and mph
-* Direction
-* Timestamp
-
-### Status Indicator
-* Green pulsing dot -- system armed and receiving data from Mega
-* Orange static dot -- waiting for Arduino connection
-
----
-
 ## How It Works
 
-1. **Startup** -- Arduino Mega waits 500ms for the Serial Monitor to connect then immediately prints the startup banner to both Serial and Serial1 (Wemos). This ensures output is visible even before the LCD is checked.
+1. **Startup** -- Arduino Mega waits 500ms for the Serial Monitor to connect then immediately prints the startup banner to both Serial and Serial1 (Wemos).
 
-2. **LCD Detection** -- I2C is initialized with a 3ms timeout. If no LCD is found the sketch continues instantly without hanging. The LCD is entirely optional.
+2. **LCD Detection** -- I2C is initialized with a 3ms timeout. If no LCD is found the sketch continues instantly without hanging.
 
 3. **Warm-up** -- A 3-second countdown runs before interrupts are armed. This allows the 24VDC supply to stabilize and the laser beams to settle, preventing false triggers at startup.
 
-4. **Sensor Check** -- Both sensor pins are read before interrupts attach. If either reads LOW at idle a warning is printed. At idle the Arduino INPUT_PULLUP holds the pin HIGH -- the 24VDC supply never touches the Arduino pin.
+4. **Sensor Check** -- Both sensor pins are read before interrupts attach. If either reads LOW at idle a warning is printed.
 
 5. **Detection** -- When an object breaks the first laser beam the NPN output pulls the black wire LOW triggering a falling-edge interrupt which starts a microsecond timer. When the second beam breaks the timer stops and speed is calculated from the known distance divided by elapsed time.
 
-6. **Debounce** -- Each sensor has its own 3ms debounce timer to reject noise on that individual pin. The overall minimum delta of 7ms matches the LR-TB5000C minimum response time.
+6. **Debounce** -- Each sensor has its own 3ms debounce timer. The overall minimum delta of 7ms matches the LR-TB5000C minimum response time.
 
-7. **Output** -- Direction is determined by which sensor fired first. All Serial, Serial1, and LCD output happens in `loop()` -- never inside the interrupt handler -- for reliability.
+7. **Output** -- Direction is determined by which sensor fired first. All Serial, Serial1, and LCD output happens in `loop()` -- never inside the interrupt handler.
 
-8. **WiFi** -- The Mega sends every output line to Serial1 (pin 18). The Wemos D1 Mini receives these lines, parses speed and direction, stores the last 20 readings, and serves them as a webpage on its WiFi hotspot.
+8. **WiFi** -- The Mega sends every output line to Serial1 (pin 18). The Wemos D1 Mini receives these lines and parses speed and direction data. The page at `4.3.2.1` loads once and JavaScript fetches updated data from the `/data` endpoint every second without reloading the page.
 
-9. **Timeout** -- If only one sensor fires and 5 seconds pass with no second trigger the system resets automatically and prints a timeout message on Serial, Serial1, and LCD.
+9. **Timeout** -- If only one sensor fires and 5 seconds pass with no second trigger the system resets automatically.
 
 ---
 
 ## Fault Tolerance
 
-The Wemos D1 Mini is entirely optional and its failure cannot affect the Mega in any way.
+The Wemos D1 Mini failure cannot affect the Mega in any way.
 
 | Failure Scenario | Effect on Mega | Effect on LCD | Effect on Phone |
 |-----------------|---------------|--------------|----------------|
@@ -515,7 +521,7 @@ The Wemos D1 Mini is entirely optional and its failure cannot affect the Mega in
 | Phone disconnects | None | None | Reconnect and refresh |
 | LCD not connected | None | No display | No effect |
 
-The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply and never checks if anything received the data. Serial1 transmission cannot block, delay, or crash the Mega under any circumstances.
+The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply and Serial1 transmission cannot block, delay, or crash the Mega under any circumstances.
 
 ---
 
@@ -540,13 +546,12 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 #### WARNING -- Sensor Reading LOW at Idle
 - Sensor may be set to N.C. (Normally Closed) -- change to N.O. on sensor front panel
 - Check 24VDC power supply is powered on
-- Check that 24VDC supply negative is connected to Arduino GND (common ground)
+- Check that 24VDC supply negative is connected to Arduino GND
 
 #### No Speed Readings After Sensors Connected
 - Confirm black signal wire is connected to Arduino pins 2 and 3
 - Check sensor output logic is set to N.O.
 - Run Sensor_ID_Test.ino to confirm sensors are triggering correctly
-- Verify common ground between 24VDC supply and Arduino
 
 #### Arduino Resets or Behaves Erratically
 - Check common ground connection between 24VDC supply negative and Arduino GND
@@ -556,31 +561,21 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 #### Timeout Messages Only
 - Object is not reaching the second sensor
 - Check sensor alignment -- both beams must be in the object path
-- Check detection distance setting on each sensor
 
 #### Wrong Direction Reported
 - Left and right sensors may be swapped -- run Sensor_ID_Test.ino to verify
 - Swap pin numbers in Speed_Test.ino if needed
 
-#### Unknown Direction
-- Same sensor is firing twice -- check sensor spacing
-- Object may be moving too slowly and triggering the same beam twice
-
 #### Inaccurate Speed Readings
 - Measure `SENSOR_DISTANCE` precisely in meters and update the sketch
 - Verify both sensors are set to the same response time (7ms fastest)
-- Check common ground between 24VDC supply and Arduino
 
 ### LCD Issues
 
-#### LCD Blank or No Backlight
-- Run an I2C scanner sketch to find the actual I2C address
-- Update `LiquidCrystal_I2C lcd(0x27, 20, 4)` with the correct address
-- Check LCD VCC and GND connections
-
-#### LCD Shows Garbage Characters
-- `LiquidCrystal I2C` library by Frank de Brabander may not be installed
-- Install via Arduino IDE -> Tools -> Manage Libraries
+#### LCD Not Detected at Startup
+- LCD may be faulty -- run I2C_Scanner.ino to test
+- Run I2C scanner to verify correct I2C address
+- Update `LiquidCrystal_I2C lcd(0x27, 20, 4)` with correct address if needed
 
 ### WiFi / Wemos Issues
 
@@ -598,6 +593,11 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 - Check common GND between Mega and Wemos
 - Verify Speed_Test.ino is running on the Mega
 
+#### Wemos Compilation Error -- ArduinoJson.h Not Found
+- ArduinoJson library not installed
+- Go to Arduino IDE -> Tools -> Manage Libraries
+- Search `ArduinoJson` by Benoit Blanchon and install it
+
 #### Wemos Board Not Showing in Arduino IDE
 - ESP8266 board package not installed -- see Arduino IDE Setup section
 
@@ -608,11 +608,12 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 * The sketch operates fully with or without the LCD or Wemos connected.
 * Sensors run on their own dedicated 24VDC supply. Only the black signal wire connects to the Arduino.
 * No logic level converter is required because the NPN open collector output only pulls the signal to GND and all grounds are tied together.
-* `micros()` rollover occurs approximately every 70 minutes. This is handled safely in the sketch using unsigned long subtraction and does not affect operation.
+* `micros()` rollover occurs approximately every 70 minutes. This is handled safely using unsigned long subtraction and does not affect operation.
 * All Serial output is kept out of the interrupt service routine for stability.
 * The measurement counter resets on power cycle or Arduino reset.
-* Silence on the Serial Monitor after the ready message is correct and expected behavior -- it means the system is armed and waiting.
+* Silence on the Serial Monitor after the ready message is correct -- it means the system is armed and waiting.
 * The Wemos stores the last 20 readings in memory. These are lost if the Wemos is power cycled.
+* The webpage at 4.3.2.1 loads once and updates live every second without reloading. No flicker.
 
 ---
 
@@ -621,7 +622,7 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 All changes to this documentation must be reviewed and approved prior to release.
 
 **Last Updated:** March 2026
-**Version:** 2.1
+**Version:** 2.2
 
 ---
 
