@@ -342,7 +342,6 @@ The Wemos D1 Mini creates its own WiFi hotspot. No router or existing network is
 | WiFi Network Name | SpeedSensor |
 | WiFi Password | speedsensor |
 | Browser Address | 4.3.2.1 |
-| Data Update Rate | Every 1 second (live, no page reload) |
 | Reading History | Last 20 readings |
 
 ### How to Connect
@@ -357,27 +356,26 @@ The Wemos D1 Mini creates its own WiFi hotspot. No router or existing network is
 
 ## Phone Webpage
 
-The Wemos D1 Mini serves a live dashboard at `4.3.2.1`. The page loads once and data updates every second without reloading or flickering. It uses two endpoints:
+The Wemos D1 Mini serves a live dashboard at `4.3.2.1`. The page loads once and data updates automatically without reloading or flickering. It uses two endpoints:
 
 | Endpoint | Purpose |
 |----------|---------|
 | / | Full HTML page -- loads once only |
-| /data | JSON data -- fetched every second by JavaScript |
+| /data | JSON data -- polled by JavaScript to update readings |
 
 ### Webpage Field Reference
 
-The following numbered fields appear on the webpage. Numbers correspond to the legend displayed at the bottom of the live page.
+The following numbered fields appear on the webpage and correspond to the GUI annotation reference image.
 
 | Field # | Field Name | Description |
 |---------|-----------|-------------|
-| 1 | Status Indicator | Green pulsing dot = system armed and receiving data from Arduino. Orange dot = waiting for Arduino connection. |
-| 2 | Meters per Second (m/s) | Raw speed value used for calculation. Most precise unit. |
-| 3 | Kilometers per Hour (km/h) | Speed converted from m/s. Calculated as m/s multiplied by 3.6. |
-| 4 | Miles per Hour (mph) | Speed converted from m/s. Calculated as m/s multiplied by 2.237. |
-| 5 | Direction of Travel | Which sensor triggered first. Right to Left means object passed right sensor then left sensor. Left to Right means the opposite. |
-| 6 | Reading Number | Sequential count since Arduino last powered on. Resets to zero on power cycle or reset. |
-| 7 | Timestamp | Minutes and seconds since Arduino powered on. Format MM:SS. |
-| 8 | Reading History | Last 20 measurements stored in order, newest at top. Oldest reading is dropped when 21st arrives. History is lost if Wemos is power cycled. |
+| 1 | WiFi Name | The SSID of the hotspot to connect to. |
+| 2 | Device Address | The IP address to open in your browser. |
+| 3 | Status Bar | Green = system armed and receiving data from Arduino. Orange = waiting for Arduino connection. |
+| 4 | Speed Displays | Live speed shown in m/s, km/h, and mph. m/s is the raw calculated value. km/h and mph are converted from m/s. |
+| 5 | Direction of Travel | Which sensor triggered first. Always visible -- shows dashes until first reading arrives. Right to Left means object passed the right sensor then the left sensor. Left to Right means the opposite. |
+| 6 | Reading # / Timestamp | Reading # is the sequential count since Arduino last powered on and resets on power cycle. Timestamp is minutes and seconds since Arduino powered on in MM:SS format. |
+| 7 | Reading History Table | Last 20 measurements stored in order, newest at top. Oldest reading is dropped when the 21st arrives. History is lost if the Wemos is power cycled. |
 
 ---
 
@@ -503,7 +501,7 @@ After the startup sequence the Serial Monitor is silent until an object passes t
 
 7. **Output** -- Direction is determined by which sensor fired first. All Serial, Serial1, and LCD output happens in `loop()` -- never inside the interrupt handler.
 
-8. **WiFi** -- The Mega sends every output line to Serial1 (pin 18). The Wemos D1 Mini receives these lines and parses speed and direction data. The page at `4.3.2.1` loads once and JavaScript fetches updated data from the `/data` endpoint every second without reloading the page.
+8. **WiFi** -- The Mega sends every output line to Serial1 (pin 18). The Wemos D1 Mini receives these lines and parses speed and direction data. The page at `4.3.2.1` loads once and JavaScript polls the `/data` endpoint to update readings live without reloading the page.
 
 9. **Timeout** -- If only one sensor fires and 5 seconds pass with no second trigger the system resets automatically.
 
@@ -613,7 +611,7 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 * The measurement counter resets on power cycle or Arduino reset.
 * Silence on the Serial Monitor after the ready message is correct -- it means the system is armed and waiting.
 * The Wemos stores the last 20 readings in memory. These are lost if the Wemos is power cycled.
-* The webpage at 4.3.2.1 loads once and updates live every second without reloading. No flicker.
+* The webpage at 4.3.2.1 loads once and updates live without reloading. No flicker.
 
 ---
 
@@ -622,7 +620,7 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 All changes to this documentation must be reviewed and approved prior to release.
 
 **Last Updated:** March 2026
-**Version:** 2.2
+**Version:** 2.3
 
 ---
 
