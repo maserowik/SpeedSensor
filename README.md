@@ -23,8 +23,10 @@
 10. [Required Libraries](#required-libraries)
 11. [Sensor Identification Test](#sensor-identification-test)
 12. [WiFi Access Point](#wifi-access-point)
-13. [Phone Webpage](#phone-webpage)
+13. [Webpage](#webpage)
+    - [Captive Portal](#captive-portal)
     - [Webpage Field Reference](#webpage-field-reference)
+    - [Clear History Button](#clear-history-button)
 14. [Serial Monitor Output](#serial-monitor-output)
     - [Startup Sequence](#startup-sequence)
     - [Measurement Output](#measurement-output)
@@ -47,7 +49,7 @@ The purpose of this system is to provide an automated way to:
 * Determine the direction of travel (Right to Left or Left to Right)
 * Log all results to the Serial Monitor with timestamp and measurement counter
 * Optionally display results on a 20x4 I2C LCD
-* Broadcast results live to a phone browser via WiFi using a Wemos D1 Mini
+* Broadcast results live to any browser (phone, tablet, laptop) via WiFi using a Wemos D1 Mini
 
 ---
 
@@ -103,6 +105,7 @@ Documents/Arduino/
 * `Wire` -- built into Arduino IDE, no install needed
 * `ESP8266WiFi` -- included automatically when ESP8266 board package is installed
 * `ESP8266WebServer` -- included automatically when ESP8266 board package is installed
+* `DNSServer` -- included automatically when ESP8266 board package is installed
 
 ---
 
@@ -346,22 +349,37 @@ The Wemos D1 Mini creates its own WiFi hotspot. No router or existing network is
 
 ### How to Connect
 
-1. On your phone go to WiFi Settings
+1. On your device go to WiFi Settings
 2. Connect to `SpeedSensor`
 3. Enter password `speedsensor`
-4. Open any browser
-5. Go to `4.3.2.1`
+4. The browser will open automatically via the captive portal
+5. If the browser does not open automatically go to `4.3.2.1` manually
+
+> **Note:** The captive portal works the same way as hotel or airport WiFi login pages. Android, iOS, and Windows all detect a new network without internet and automatically redirect to the device page.
 
 ---
 
-## Phone Webpage
+## Webpage
 
-The Wemos D1 Mini serves a live dashboard at `4.3.2.1`. The page loads once and data updates automatically without reloading or flickering. It uses two endpoints:
+The Wemos D1 Mini serves a live dashboard at `4.3.2.1`. The page loads once and data updates automatically without reloading or flickering. It uses three endpoints:
 
 | Endpoint | Purpose |
 |----------|---------|
 | / | Full HTML page -- loads once only |
-| /data | JSON data -- polled by JavaScript to update readings |
+| /data | JSON data -- polled by JavaScript every second to update readings |
+| /clear | Resets the reading history on the Wemos -- called by the Clear button |
+
+### Captive Portal
+
+The Wemos D1 Mini includes a captive portal so the browser opens automatically when a device connects to the SpeedSensor WiFi network. This works by running a DNS server that redirects all domain lookups to `4.3.2.1` and responding to the standard OS detection probe URLs used by Android, iOS, macOS, and Windows.
+
+| Operating System | Probe URL Handled |
+|-----------------|-------------------|
+| Android | /generate_204, /gen_204 |
+| iOS / macOS | /hotspot-detect.html, /library/test/success.html |
+| Windows | /ncsi.txt, /connecttest.txt, /redirect |
+
+> **Note:** Captive portal behavior varies slightly by device and OS version. If the browser does not open automatically, navigate to `4.3.2.1` manually.
 
 ### Webpage Field Reference
 
@@ -369,13 +387,18 @@ The following numbered fields appear on the webpage and correspond to the GUI an
 
 | Field # | Field Name | Description |
 |---------|-----------|-------------|
-| 1 | WiFi Name | The SSID of the hotspot to connect to. |
-| 2 | Device Address | The IP address to open in your browser. |
-| 3 | Status Bar | Green = system armed and receiving data from Arduino. Orange = waiting for Arduino connection. |
-| 4 | Speed Displays | Live speed shown in m/s, km/h, and mph. m/s is the raw calculated value. km/h and mph are converted from m/s. |
-| 5 | Direction of Travel | Which sensor triggered first. Always visible -- shows dashes until first reading arrives. Right to Left means object passed the right sensor then the left sensor. Left to Right means the opposite. |
-| 6 | Reading # / Timestamp | Reading # is the sequential count since Arduino last powered on and resets on power cycle. Timestamp is minutes and seconds since Arduino powered on in MM:SS format. |
-| 7 | Reading History Table | Last 20 measurements stored in order, newest at top. Oldest reading is dropped when the 21st arrives. History is lost if the Wemos is power cycled. |
+| 1 | Page Title & Sensor Model | System name and hardware identifiers shown at the top of the page. |
+| 2 | WiFi Connection Info | The SSID and IP address displayed for quick reference. |
+| 3 | Status Bar | Green & pulsing = system armed and receiving data. Orange = waiting for Arduino connection. Shows last speed reading when armed. |
+| 4 | Latest Reading Label | Section header for the most recent measurement card. |
+| 5 | Speed Display | Live speed shown simultaneously in m/s, km/h, and mph. m/s is the raw calculated value. km/h and mph are converted from m/s. |
+| 6 | Direction of Travel | Which sensor triggered first. Green arrow = Right, Blue arrow = Left. Shows dashes until first reading arrives. |
+| 7 | Clear Button | Resets the reading history stored on the Wemos. History clears within 1 second. Does not affect the Arduino or any Serial output. History is also cleared automatically on Wemos power cycle. |
+| 8 | Reading History Table | Last 20 measurements in order, newest at top. Columns: Reading #, m/s, km/h, mph, Direction. The most recent row is highlighted in blue. Oldest reading is dropped when the 21st arrives. |
+
+### Clear History Button
+
+The **✕ CLEAR** button appears in the top-right corner of the Reading History section. Clicking it sends a request to the `/clear` endpoint on the Wemos which resets `historyCount` and `historyHead` to zero. The table clears within 1 second on the next `/data` poll. This only clears the history stored in the Wemos -- it has no effect on the Arduino, the Serial Monitor output, or the measurement counter.
 
 ---
 
@@ -501,7 +524,7 @@ After the startup sequence the Serial Monitor is silent until an object passes t
 
 7. **Output** -- Direction is determined by which sensor fired first. All Serial, Serial1, and LCD output happens in `loop()` -- never inside the interrupt handler.
 
-8. **WiFi** -- The Mega sends every output line to Serial1 (pin 18). The Wemos D1 Mini receives these lines and parses speed and direction data. The page at `4.3.2.1` loads once and JavaScript polls the `/data` endpoint to update readings live without reloading the page.
+8. **WiFi** -- The Mega sends every output line to Serial1 (pin 18). The Wemos D1 Mini receives these lines and parses speed and direction data. A captive portal automatically opens the browser when a device connects to the SpeedSensor hotspot. The page at `4.3.2.1` loads once and JavaScript polls the `/data` endpoint every second to update readings live without reloading the page. A `/clear` endpoint allows the reading history to be reset from the browser.
 
 9. **Timeout** -- If only one sensor fires and 5 seconds pass with no second trigger the system resets automatically.
 
@@ -582,9 +605,18 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 - Verify `Wemos_D1_Mini.ino` was uploaded successfully
 - Verify correct board (LOLIN Wemos D1 R2 & mini) was selected during upload
 
+#### Browser Does Not Open Automatically After Connecting
+- Captive portal behavior varies by device -- wait a few seconds after connecting
+- Disable mobile data on the device to prevent it switching back to cellular
+- If it still does not open, navigate to `4.3.2.1` manually in any browser
+
 #### Page Not Loading at 4.3.2.1
-- Confirm phone is connected to SpeedSensor WiFi not your regular network
+- Confirm the device is connected to SpeedSensor WiFi and not your regular network
 - Some phones switch back to cellular -- disable mobile data temporarily
+
+#### Clear Button Does Not Clear History
+- Check the device is still connected to the SpeedSensor hotspot
+- Refresh the page and try again -- the table clears within 1 second of clicking
 
 #### Page Shows "Waiting for Arduino..."
 - Check the wire between Mega pin 18 (TX1) and Wemos RX
@@ -610,8 +642,10 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 * All Serial output is kept out of the interrupt service routine for stability.
 * The measurement counter resets on power cycle or Arduino reset.
 * Silence on the Serial Monitor after the ready message is correct -- it means the system is armed and waiting.
-* The Wemos stores the last 20 readings in memory. These are lost if the Wemos is power cycled.
+* The Wemos stores the last 20 readings in memory. These are lost if the Wemos is power cycled or if the Clear button is used.
 * The webpage at 4.3.2.1 loads once and updates live without reloading. No flicker.
+* The captive portal opens the browser automatically on Android, iOS, macOS, and Windows when connecting to the SpeedSensor hotspot. If it does not trigger automatically navigate to 4.3.2.1 manually.
+* The reading history table shows Reading #, m/s, km/h, mph, and Direction only. Timestamp is not shown on the webpage -- it is available on the Serial Monitor output only.
 
 ---
 
@@ -620,7 +654,7 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 All changes to this documentation must be reviewed and approved prior to release.
 
 **Last Updated:** March 2026
-**Version:** 2.3
+**Version:** 2.4
 
 ---
 

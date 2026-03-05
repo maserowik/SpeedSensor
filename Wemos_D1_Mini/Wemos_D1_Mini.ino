@@ -6,20 +6,26 @@
 //   Phone connects to:
 //   SSID: SpeedSensor
 //   Pass: speedsensor
-//   Then open browser: 4.3.2.1
+//   Browser opens automatically via
+//   Captive Portal (like hotel WiFi)
+//   or manually at: 4.3.2.1
 //
 //   Endpoints:
 //   /       -- main HTML page (loads once)
 //   /data   -- JSON data (polled every second by JS)
+//   /clear  -- clears reading history
 // =================================
 
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
+#include <DNSServer.h>
 #include <ArduinoJson.h>
 
 const char* AP_SSID = "SpeedSensor";
 const char* AP_PASS = "speedsensor";
 
+const byte DNS_PORT = 53;
+DNSServer dnsServer;
 ESP8266WebServer server(80);
 
 #define MAX_HISTORY 20
@@ -97,6 +103,8 @@ const char PAGE_HTML[] PROGMEM = R"rawhtml(
     .history-header{padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;background:var(--panel2)}
     .history-header .title{font-size:.68rem;letter-spacing:.2em;text-transform:uppercase;color:var(--subtext);font-family:var(--font-mono);font-weight:bold}
     .history-header .sub{font-size:.62rem;color:var(--dim);font-family:var(--font-mono);margin-top:3px}
+    .clear-btn{font-family:var(--font-mono);font-size:.68rem;padding:6px 14px;border-radius:5px;border:2px solid rgba(217,82,13,.5);background:rgba(217,82,13,.08);color:var(--orange);cursor:pointer;letter-spacing:.06em;font-weight:bold;transition:all .2s}
+    .clear-btn:hover{background:rgba(217,82,13,.18);border-color:var(--orange)}
 
     .history-table{width:100%;border-collapse:collapse;font-family:var(--font-mono);font-size:.74rem}
     .history-table th{padding:9px 12px;text-align:left;color:var(--dim);letter-spacing:.1em;font-weight:400;border-bottom:1px solid var(--border);white-space:nowrap;font-size:.65rem;text-transform:uppercase;background:var(--panel2)}
@@ -138,7 +146,7 @@ const char PAGE_HTML[] PROGMEM = R"rawhtml(
       <div class="dir-label">Direction of Travel</div>
       <span class="direction-badge" id="dirBadge">-- awaiting --</span>
     </div>
-    <div class="meta-info" id="metaInfo" style="color:var(--dim)">Reading #: <span>--</span><br>Timestamp: <span>--:--</span><br>Total: <span>0 readings</span></div>
+
   </div>
 </div>
 
@@ -148,7 +156,7 @@ const char PAGE_HTML[] PROGMEM = R"rawhtml(
       <div class="title">Reading History</div>
       <div class="sub">Newest at top -- oldest at bottom</div>
     </div>
-
+    <button class="clear-btn" onclick="clearHistory()">&#10005; CLEAR</button>
   </div>
   <div id="historyContent">
     <div class="empty-history">No history yet -- waiting for first measurement</div>
@@ -158,6 +166,9 @@ const char PAGE_HTML[] PROGMEM = R"rawhtml(
 <footer>Seegrid Internal Use Only // Not For External Users</footer>
 
 <script>
+function clearHistory() {
+  fetch('/clear').catch(function(){});
+}
 function updateData() {
   fetch('/data')
     .then(function(r){return r.json();})
@@ -169,7 +180,6 @@ function updateData() {
 
       var lc=document.getElementById('latestContent');
       var dir=document.getElementById('dirBadge');
-      var mi=document.getElementById('metaInfo');
 
       if(d.count===0){
         lc.innerHTML='<div class="no-data">No readings yet<div class="hint">Pass an object through both sensor beams to begin</div></div>';
@@ -177,7 +187,7 @@ function updateData() {
         dir.style.background='rgba(90,122,154,.1)';
         dir.style.borderColor='rgba(90,122,154,.4)';
         dir.style.color='var(--dim)';
-        mi.innerHTML='Reading #: <span>--</span><br>Timestamp: <span>--:--</span><br>Total: <span>0 readings</span>';
+
       } else {
         var r=d.latest;
         lc.innerHTML=
@@ -191,7 +201,7 @@ function updateData() {
         dir.style.background=isRight?'rgba(0,135,90,.1)':'rgba(0,119,204,.1)';
         dir.style.borderColor=isRight?'rgba(0,135,90,.5)':'rgba(0,119,204,.5)';
         dir.style.color=isRight?'var(--green)':'var(--accent)';
-        mi.innerHTML='Reading #: <span>'+r.num+'</span><br>Timestamp: <span>'+r.ts+'</span><br>Total: <span>'+d.count+' readings</span>';
+
       }
 
       var hc=document.getElementById('historyContent');
@@ -202,9 +212,9 @@ function updateData() {
         for(var i=0;i<d.history.length;i++){
           var h=d.history[i];
           var hr=h.dir.toUpperCase().indexOf('RIGHT')>=0;
-          rows+='<tr><td>'+h.num+'</td><td>'+h.ms+'</td><td>'+h.kmh+'</td><td>'+h.mph+'</td><td class="dir-cell">'+(hr?'&#9658; '+h.dir:h.dir+' &#9668;')+'</td><td>'+h.ts+'</td></tr>';
+          rows+='<tr><td>'+h.num+'</td><td>'+h.ms+'</td><td>'+h.kmh+'</td><td>'+h.mph+'</td><td class="dir-cell">'+(hr?'&#9658; '+h.dir:h.dir+' &#9668;')+'</td></tr>';
         }
-        hc.innerHTML='<table class="history-table"><thead><tr><th>Reading #</th><th>m/s</th><th>km/h</th><th>mph</th><th>Direction</th><th>Timestamp</th></tr></thead><tbody>'+rows+'</tbody></table>';
+        hc.innerHTML='<table class="history-table"><thead><tr><th>Reading #</th><th>m/s</th><th>km/h</th><th>mph</th><th>Direction</th></tr></thead><tbody>'+rows+'</tbody></table>';
       }
     })
     .catch(function(){});
@@ -257,6 +267,16 @@ void handleData() {
 }
 
 // ================================
+//   Clear History Endpoint
+// ================================
+void handleClear() {
+  historyCount = 0;
+  historyHead  = 0;
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// ================================
 //   Parse Line from Arduino Mega
 // ================================
 void parseLine(String line) {
@@ -293,14 +313,44 @@ void parseLine(String line) {
 }
 
 // ================================
+//   Captive Portal Redirect
+//   Catches OS detection probes from
+//   Android, iOS, Windows, macOS
+// ================================
+void handleCaptivePortal() {
+  server.sendHeader("Location", "http://4.3.2.1/", true);
+  server.send(302, "text/plain", "");
+}
+
+// ================================
 //   SETUP
 // ================================
 void setup() {
   Serial.begin(115200);
   WiFi.softAP(AP_SSID, AP_PASS);
   WiFi.softAPConfig(IPAddress(4,3,2,1), IPAddress(4,3,2,1), IPAddress(255,255,255,0));
-  server.on("/",     []() { server.send_P(200, "text/html", PAGE_HTML); });
-  server.on("/data", handleData);
+
+  // DNS: redirect all domains to 4.3.2.1
+  dnsServer.start(DNS_PORT, "*", IPAddress(4,3,2,1));
+
+  // Main page
+  server.on("/",      []() { server.send_P(200, "text/html", PAGE_HTML); });
+  server.on("/data",  handleData);
+  server.on("/clear", handleClear);
+
+  // Captive portal probe URLs -- Android
+  server.on("/generate_204",         handleCaptivePortal);
+  server.on("/gen_204",              handleCaptivePortal);
+  // Captive portal probe URLs -- iOS / macOS
+  server.on("/hotspot-detect.html",  handleCaptivePortal);
+  server.on("/library/test/success.html", handleCaptivePortal);
+  // Captive portal probe URLs -- Windows
+  server.on("/ncsi.txt",             handleCaptivePortal);
+  server.on("/connecttest.txt",      handleCaptivePortal);
+  server.on("/redirect",             handleCaptivePortal);
+  // Catch-all for anything else
+  server.onNotFound(handleCaptivePortal);
+
   server.begin();
 }
 
@@ -308,6 +358,7 @@ void setup() {
 //   MAIN LOOP
 // ================================
 void loop() {
+  dnsServer.processNextRequest();
   server.handleClient();
   while (Serial.available()) {
     String line = Serial.readStringUntil('\n');
