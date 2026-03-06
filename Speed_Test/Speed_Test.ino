@@ -23,7 +23,7 @@ const int sensorPin2 = 3;  // Left sensor  -- LR-TB5000C (black wire)
 const float SENSOR_DISTANCE        = 1.0;       // Distance between sensors in meters -- measure accurately
 const unsigned long TIMEOUT_US     = 5000000UL; // 5 second timeout if only one sensor fires
 const unsigned long MIN_DELTA_US   = 7000;      // 7ms minimum -- matches LR-TB5000C response time
-const unsigned long MIN_TRIGGER_US = 3000;      // 3ms per-sensor debounce
+const unsigned long MIN_TRIGGER_US = 10000;     // 10ms per-sensor debounce (increased from 3ms to reduce same-sensor re-fire)
 
 // ================================
 //   Sensor State
@@ -337,16 +337,34 @@ void handleTrigger(int sensorID) {
   unsigned long endTime   = micros();
   unsigned long deltaTime = endTime - startTime;
 
-  // Ignore if too fast -- must meet LR-TB5000C minimum response time (7ms)
-  if (deltaTime < MIN_DELTA_US) return;
+  // --------------------------------
+  //  Same sensor fired twice --
+  //  object re-crossed or bounce.
+  //  Reset and treat this as a fresh
+  //  first trigger on that sensor.
+  // --------------------------------
+  if (sensorID == firstSensor) {
+    // Restart measurement from this new trigger
+    startTime   = endTime;
+    firstSensor = sensorID;
+    return;
+  }
+
+  // Ignore if delta is below the sensor minimum response time (7ms)
+  // This catches extremely fast noise pulses
+  if (deltaTime < MIN_DELTA_US) {
+    measuring   = false;
+    firstSensor = 0;
+    return;
+  }
 
   // Calculate speed
   resultSpeed = SENSOR_DISTANCE / (deltaTime / 1000000.0);
 
-  // Determine direction
-  if      (firstSensor == 1 && sensorID == 2) resultDirection = 1;  // Right -> Left
-  else if (firstSensor == 2 && sensorID == 1) resultDirection = 2;  // Left -> Right
-  else                                         resultDirection = 0;  // Unknown
+  // Determine direction -- at this point sensorID != firstSensor
+  // so direction is always deterministic
+  if (firstSensor == 1 && sensorID == 2) resultDirection = 1;  // Right -> Left
+  else                                    resultDirection = 2;  // Left -> Right
 
   // Flag result ready for loop() to print
   resultReady = true;
