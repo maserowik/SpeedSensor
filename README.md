@@ -345,7 +345,6 @@ The Wemos D1 Mini creates its own WiFi hotspot. No router or existing network is
 | WiFi Network Name | SpeedSensor |
 | WiFi Password | speedsensor |
 | Browser Address | 4.3.2.1 |
-| Reading History | Last 20 readings |
 
 ### How to Connect
 
@@ -371,15 +370,29 @@ The Wemos D1 Mini serves a live dashboard at `4.3.2.1`. The page loads once and 
 
 ### Captive Portal
 
-The Wemos D1 Mini includes a captive portal so the browser opens automatically when a device connects to the SpeedSensor WiFi network. This works by running a DNS server that redirects all domain lookups to `4.3.2.1` and responding to the standard OS detection probe URLs used by Android, iOS, macOS, and Windows.
+A captive portal is the mechanism that automatically opens a browser page when you connect to a WiFi network. You have seen it at hotels, airports, and coffee shops — when you connect and a login page appears without you doing anything. The SpeedSensor hotspot works the same way.
 
-| Operating System | Probe URL Handled |
-|-----------------|-------------------|
-| Android | /generate_204, /gen_204 |
-| iOS / macOS | /hotspot-detect.html, /library/test/success.html |
-| Windows | /ncsi.txt, /connecttest.txt, /redirect |
+There are two pieces working together:
 
-> **Note:** Captive portal behavior varies slightly by device and OS version. If the browser does not open automatically, navigate to `4.3.2.1` manually.
+**1. DNS Server**
+
+Normally when a device connects to WiFi it asks a DNS server to translate domain names like `google.com` into IP addresses. The Wemos has no real internet connection so instead it runs its own DNS server that answers every single domain lookup — no matter what domain is asked — with `4.3.2.1`. So when a phone asks "where is google.com?" the Wemos replies "it's at 4.3.2.1".
+
+**2. OS Probe Interception**
+
+Every operating system has a built-in internet check. Right after connecting to any WiFi network the OS quietly sends a test request to a known server expecting a very specific response. If the response comes back wrong the OS knows there is no real internet and automatically opens the browser to the redirected address.
+
+| Operating System | Probe URL | Expected Response |
+|-----------------|-----------|-------------------|
+| Android | /generate_204 | Empty 204 response |
+| iOS / macOS | /hotspot-detect.html | Specific Apple content |
+| Windows | /ncsi.txt | "Microsoft NCSI" |
+
+The Wemos intercepts all of these requests and sends a redirect to `http://4.3.2.1/` instead of the expected response. The OS sees the wrong response, recognizes there is no real internet, and automatically opens the browser to the redirected address — which is the Speed Sensor page.
+
+In plain terms: the Wemos pretends to be the entire internet, intercepts the OS internet test, and redirects the browser to itself. The OS thinks it needs to log in to get internet access — exactly like hotel WiFi — and opens the browser automatically.
+
+> **Note:** Captive portal behavior varies slightly by device and OS version. If the browser does not open automatically, navigate to `4.3.2.1` manually in any browser.
 
 ### Webpage Field Reference
 
@@ -394,7 +407,7 @@ The following numbered fields appear on the webpage and correspond to the GUI an
 | 5 | Speed Display | Live speed shown simultaneously in m/s, km/h, and mph. m/s is the raw calculated value. km/h and mph are converted from m/s. |
 | 6 | Direction of Travel | Which sensor triggered first. Green arrow = Right, Blue arrow = Left. Shows dashes until first reading arrives. |
 | 7 | Clear Button | Resets the reading history stored on the Wemos. History clears within 1 second. Does not affect the Arduino or any Serial output. History is also cleared automatically on Wemos power cycle. |
-| 8 | Reading History Table | Last 20 measurements in order, newest at top. Columns: Reading #, m/s, km/h, mph, Direction. The most recent row is highlighted in blue. Oldest reading is dropped when the 21st arrives. |
+| 8 | Reading History Table | Log of past readings in order, newest at top. Columns: Reading #, m/s, km/h, mph, Direction. The most recent row is highlighted in blue. Oldest reading is dropped when the table is full. |
 
 ### Clear History Button
 
@@ -642,7 +655,7 @@ The Mega transmits to Serial1 using fire-and-forget. It never waits for a reply 
 * All Serial output is kept out of the interrupt service routine for stability.
 * The measurement counter resets on power cycle or Arduino reset.
 * Silence on the Serial Monitor after the ready message is correct -- it means the system is armed and waiting.
-* The Wemos stores the last 20 readings in memory. These are lost if the Wemos is power cycled or if the Clear button is used.
+* The Wemos stores a rolling history of readings in memory. These are lost if the Wemos is power cycled or if the Clear button is used.
 * The webpage at 4.3.2.1 loads once and updates live without reloading. No flicker.
 * The captive portal opens the browser automatically on Android, iOS, macOS, and Windows when connecting to the SpeedSensor hotspot. If it does not trigger automatically navigate to 4.3.2.1 manually.
 * The reading history table shows Reading #, m/s, km/h, mph, and Direction only. Timestamp is not shown on the webpage -- it is available on the Serial Monitor output only.
