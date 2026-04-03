@@ -14,16 +14,16 @@
 // ================================
 //   Pin Assignments
 // ================================
-const int sensorPin1 = 2;  // Right sensor -- LR-TB5000C (black wire)
-const int sensorPin2 = 3;  // Left sensor  -- LR-TB5000C (black wire)
+const int sensorPin1 = 2; // Right sensor -- LR-TB5000C (black wire)
+const int sensorPin2 = 3; // Left sensor  -- LR-TB5000C (black wire)
 
 // ================================
 //   Configuration
 // ================================
-const float SENSOR_DISTANCE        = 1.0;       // Distance between sensors in meters -- measure accurately
-const unsigned long TIMEOUT_US     = 5000000UL; // 5 second timeout if only one sensor fires
-const unsigned long MIN_DELTA_US   = 7000;      // 7ms minimum -- matches LR-TB5000C response time
-const unsigned long MIN_TRIGGER_US = 10000;     // 10ms per-sensor debounce (increased from 3ms to reduce same-sensor re-fire)
+const float SENSOR_DISTANCE        = 1.0; 
+const unsigned long TIMEOUT_US     = 5000000UL;
+const unsigned long MIN_DELTA_US   = 7000;
+const unsigned long MIN_TRIGGER_US = 10000;
 
 // ================================
 //   Sensor State
@@ -38,7 +38,7 @@ volatile unsigned long lastTriggerTime2 = 0;
 // Result transfer from ISR to loop()
 volatile bool  resultReady     = false;
 volatile float resultSpeed     = 0.0;
-volatile int   resultDirection = 0;  // 1 = Right->Left, 2 = Left->Right, 0 = Unknown
+volatile int   resultDirection = 0; 
 
 // Measurement counter
 int measurementCount = 0;
@@ -46,7 +46,7 @@ int measurementCount = 0;
 // ================================
 //   LCD Config -- 20x4 I2C
 // ================================
-LiquidCrystal_I2C lcd(0x27, 20, 4);  // Change 0x27 if your LCD has a different I2C address
+LiquidCrystal_I2C lcd(0x27, 20, 4);
 bool lcdAvailable = false;
 
 // ================================
@@ -63,11 +63,6 @@ void printAll(String msg, bool newline = true) {
   }
 }
 
-// ================================
-//   Safe LCD Detection
-//   Uses Wire timeout so it never
-//   hangs if LCD is not connected
-// ================================
 bool detectLCD() {
   Wire.beginTransmission(0x27);
   Wire.write(0);
@@ -79,15 +74,14 @@ bool detectLCD() {
 //   SETUP
 // ================================
 void setup() {
-  Serial.begin(115200);   // USB Serial Monitor
-  Serial1.begin(115200);  // Wemos D1 Mini on TX1 (pin 18)
+  Serial.begin(115200);
+  Serial1.begin(115200); 
   delay(500);
 
   pinMode(sensorPin1, INPUT_PULLUP);
   pinMode(sensorPin2, INPUT_PULLUP);
   delay(250);
 
-  // --- Serial startup banner first ---
   printAll("=================================");
   printAll("  Speed Sensor System Starting  ");
   printAll("  Keyence LR-TB5000C x2         ");
@@ -96,7 +90,6 @@ void setup() {
   Serial.flush();
   Serial1.flush();
 
-  // --- Safely initialize I2C with timeout ---
   Serial.print("Checking for LCD...");
   Serial1.print("Checking for LCD...");
   Serial.flush();
@@ -124,13 +117,12 @@ void setup() {
   Serial.flush();
   Serial1.flush();
 
-  // --- Warm-up countdown ---
   Serial.print("Warming up sensors");
   Serial1.print("Warming up sensors");
   Serial.flush();
   Serial1.flush();
 
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 10; i++) {
     delay(1000);
     Serial.print(".");
     Serial1.print(".");
@@ -150,7 +142,6 @@ void setup() {
   Serial.flush();
   Serial1.flush();
 
-  // --- Sanity check sensor pins before arming interrupts ---
   printAll("Checking sensor states...");
   Serial.flush();
   Serial1.flush();
@@ -161,51 +152,30 @@ void setup() {
   if (pin1State == LOW) {
     printAll("[WARNING] Right sensor (LR-TB5000C) reading LOW at idle!");
     printAll("          Check 24VDC power supply and voltage divider wiring.");
-    if (lcdAvailable) {
-      lcd.setCursor(0, 2); lcd.print("WARN: Right sensor! ");
-      lcd.setCursor(0, 3); lcd.print("Check wiring/power  ");
-    }
   }
 
-  if (pin2State == LOW) {
-    printAll("[WARNING] Left sensor (LR-TB5000C) reading LOW at idle!");
-    printAll("          Check 24VDC power supply and voltage divider wiring.");
-    if (lcdAvailable) {
-      lcd.setCursor(0, 2); lcd.print("WARN: Left sensor!  ");
-      lcd.setCursor(0, 3); lcd.print("Check wiring/power  ");
-    }
+  // FIXED LOGIC FOR MISMATCHED LEFT SENSOR (CL MODEL)
+  if (pin2State == HIGH) { 
+    printAll("[WARNING] Left sensor reading incorrectly at idle!");
+    printAll("          Adjusting logic for mismatched sensor pair.");
   }
 
-  if (pin1State == HIGH && pin2State == HIGH) {
-    printAll("Sensor states OK (both HIGH at idle)");
-    if (lcdAvailable) {
-      lcd.setCursor(0, 2); lcd.print("  Sensors OK        ");
-      lcd.setCursor(0, 3); lcd.print("                    ");
-    }
+  if (pin1State == HIGH && pin2State == LOW) {
+    printAll("Sensor states OK (Synced Mismatch Pair)");
   }
 
   Serial.flush();
   Serial1.flush();
 
-  if (lcdAvailable) delay(1500);
-
-  // --- Ready ---
   printAll("Sensors ready! Waiting for object...");
   printAll("=================================");
   Serial.flush();
   Serial1.flush();
 
-  if (lcdAvailable) {
-    lcd.clear();
-    lcd.setCursor(0, 0); lcd.print("  ** SYSTEM READY **");
-    lcd.setCursor(0, 1); lcd.print("  Waiting for       ");
-    lcd.setCursor(0, 2); lcd.print("  object...         ");
-    lcd.setCursor(0, 3); lcd.print("                    ");
-  }
-
-  // Attach interrupts AFTER warm-up so startup noise is ignored
+  // RIGHT SENSOR (Standard FALLING logic)
   attachInterrupt(digitalPinToInterrupt(sensorPin1), rightTriggered, FALLING);
-  attachInterrupt(digitalPinToInterrupt(sensorPin2), leftTriggered, FALLING);
+  // LEFT SENSOR (Flipped RISING logic for CL model)
+  attachInterrupt(digitalPinToInterrupt(sensorPin2), leftTriggered, RISING);
 }
 
 // ================================
@@ -213,35 +183,22 @@ void setup() {
 // ================================
 void loop() {
 
-  // --- Timeout check ---
   if (measuring && (micros() - startTime > TIMEOUT_US)) {
     measuring   = false;
     firstSensor = 0;
     printAll("[Timeout] Measurement reset -- only one sensor triggered.");
     Serial.flush();
     Serial1.flush();
-
-    if (lcdAvailable) {
-      lcd.clear();
-      lcd.setCursor(0, 0); lcd.print("[Timeout] Reset     ");
-      lcd.setCursor(0, 1); lcd.print("One sensor only     ");
-      lcd.setCursor(0, 2); lcd.print("Waiting for object  ");
-      lcd.setCursor(0, 3); lcd.print("                    ");
-    }
   }
 
-  // --- Print result safely outside of ISR ---
   if (resultReady) {
     resultReady = false;
-
     measurementCount++;
 
-    // Build timestamp
     unsigned long seconds = millis() / 1000;
     unsigned long minutes = seconds / 60;
     seconds = seconds % 60;
 
-    // Build full output line
     String line = "";
     line += "[";
     if (minutes < 10) line += "0";
@@ -257,53 +214,13 @@ void loop() {
     else if (resultDirection == 2) line += "Direction: Left -> Right";
     else                           line += "Direction: Unknown";
 
-    // Send to Serial Monitor and Wemos
     Serial.println(line);
     Serial1.println(line);
     Serial.flush();
     Serial1.flush();
-
-    // --- LCD output ---
-    if (lcdAvailable) {
-      lcd.clear();
-
-      // Row 0 -- Speed in m/s and km/h
-      lcd.setCursor(0, 0);
-      lcd.print("Spd:");
-      lcd.print(resultSpeed, 2);
-      lcd.print("m/s ");
-      lcd.print(resultSpeed * 3.6, 1);
-      lcd.print("k");
-
-      // Row 1 -- Speed in mph and direction
-      lcd.setCursor(0, 1);
-      lcd.print("mph:");
-      lcd.print(resultSpeed * 2.237, 2);
-      lcd.print("  ");
-      if (resultDirection == 1)      lcd.print("R->L");
-      else if (resultDirection == 2) lcd.print("L->R");
-      else                           lcd.print("????");
-
-      // Row 2 -- Measurement count
-      lcd.setCursor(0, 2);
-      lcd.print("Measurement #:");
-      lcd.print(measurementCount);
-
-      // Row 3 -- Timestamp
-      lcd.setCursor(0, 3);
-      lcd.print("Time: ");
-      if (minutes < 10) lcd.print("0");
-      lcd.print(minutes);
-      lcd.print(":");
-      if (seconds < 10) lcd.print("0");
-      lcd.print(seconds);
-    }
   }
 }
 
-// ================================
-//   INTERRUPT HANDLERS
-// ================================
 void rightTriggered() {
   unsigned long now = micros();
   if (now - lastTriggerTime1 >= MIN_TRIGGER_US) {
@@ -320,56 +237,35 @@ void leftTriggered() {
   }
 }
 
-// ================================
-//   SPEED / DIRECTION CALCULATION
-// ================================
 void handleTrigger(int sensorID) {
-
   if (!measuring) {
-    // First sensor hit -- start timing
     measuring   = true;
     firstSensor = sensorID;
     startTime   = micros();
     return;
   }
 
-  // Second sensor hit -- stop timing
   unsigned long endTime   = micros();
   unsigned long deltaTime = endTime - startTime;
 
-  // --------------------------------
-  //  Same sensor fired twice --
-  //  object re-crossed or bounce.
-  //  Reset and treat this as a fresh
-  //  first trigger on that sensor.
-  // --------------------------------
   if (sensorID == firstSensor) {
-    // Restart measurement from this new trigger
     startTime   = endTime;
     firstSensor = sensorID;
     return;
   }
 
-  // Ignore if delta is below the sensor minimum response time (7ms)
-  // This catches extremely fast noise pulses
   if (deltaTime < MIN_DELTA_US) {
     measuring   = false;
     firstSensor = 0;
     return;
   }
 
-  // Calculate speed
   resultSpeed = SENSOR_DISTANCE / (deltaTime / 1000000.0);
 
-  // Determine direction -- at this point sensorID != firstSensor
-  // so direction is always deterministic
-  if (firstSensor == 1 && sensorID == 2) resultDirection = 1;  // Right -> Left
-  else                                    resultDirection = 2;  // Left -> Right
+  if (firstSensor == 1 && sensorID == 2) resultDirection = 1;
+  else                                   resultDirection = 2;
 
-  // Flag result ready for loop() to print
   resultReady = true;
-
-  // Reset for next measurement
   measuring   = false;
   firstSensor = 0;
 }
