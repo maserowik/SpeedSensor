@@ -196,8 +196,8 @@ function updateData() {
             '<div class="speed-item"><div class="unit-name">Kilometers per Hour</div><span class="val">'+r.kmh+'</span><span class="unit">km/h</span></div>'+
             '<div class="speed-item"><div class="unit-name">Miles per Hour</div><span class="val">'+r.mph+'</span><span class="unit">mph</span></div>'+
           '</div>';
-        var isRight=r.dir.toUpperCase().indexOf('RIGHT')>=0;
-        dir.innerHTML=isRight?'&#9658; RIGHT':'LEFT &#9668;';
+        var isRight=r.dir.toUpperCase().indexOf('RIGHT')===0;
+        dir.innerHTML=isRight?'&#9658; '+r.dir:r.dir+' &#9668;';
         dir.style.background=isRight?'rgba(0,135,90,.1)':'rgba(0,119,204,.1)';
         dir.style.borderColor=isRight?'rgba(0,135,90,.5)':'rgba(0,119,204,.5)';
         dir.style.color=isRight?'var(--green)':'var(--accent)';
@@ -284,7 +284,7 @@ void parseLine(String line) {
   if (line.length() == 0) return;
   if (line.indexOf("Waiting for object") >= 0) { systemStatus = "Waiting for object"; arduinoReady = true; return; }
   if (line.indexOf("Sensor states OK")   >= 0) { systemStatus = "Sensors OK -- ready"; arduinoReady = true; return; }
-  if (line.indexOf("Timeout")            >= 0) { systemStatus = "Timeout -- one sensor only"; return; }
+  if (line.indexOf("Timeout")            >= 0) { systemStatus = line.substring(line.indexOf("[Timeout]")); return; }
   if (line.indexOf("Starting")  >= 0 ||
       line.indexOf("Warming")   >= 0 ||
       line.indexOf("Checking")  >= 0)           { systemStatus = line; return; }
